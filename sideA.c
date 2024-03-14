@@ -8,8 +8,8 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
-#define WRITE 3001
-#define LISTEN 3000
+#define WRITE 3000
+#define LISTEN 3001
 
 
 
@@ -24,8 +24,8 @@ void * writter(void * arg) {
     client.sin_port = htons(WRITE);
     client.sin_family = AF_INET;
 
-    for(i = 0 ;i < 10; i++){
-        sleep(1);
+    for(int i = 0 ;i < 10; i++){
+        //sleep(1);
         printf("Connecting to server\n");
     }
     int ret = bind(sock, (const struct sockaddr *)&client, sizeof(client));
@@ -49,8 +49,8 @@ void * listener(void * arg) {
 
     int socket_connection = socket(AF_INET, SOCK_STREAM, 0);
 
-    for(i = 0 ;i < 10; i++){
-        sleep(1);
+    for(int i = 0 ;i < 10; i++){
+        //sleep(1);
         printf("Connecting to server\n");
     }
     
