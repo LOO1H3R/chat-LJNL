@@ -30,12 +30,14 @@ void * writter(void * arg) {
     
     int client_send = accept(sock, (struct sockaddr *) NULL, NULL);
     printf("Creating socket\n");
-    for(int i = 0;i<5;i++){
+    for(;;){
         sleep(1);
-        printf("Sending data...\n");
-        char str[100] = "Hello from Luther\n";        
+        char str[100]; 
+        printf("A: ");
+        fflush(STDIN_FILENO); 
+        fgets(str,sizeof(str),stdin);   
         ret = send(client_send, str, strlen(str), 0);
-        printf("Tx: %d\n", ret);
+                
     }
     ret = close(sock);
     return 0;
@@ -66,7 +68,8 @@ void * listener(void * arg) {
         //sleep(1);
         ret = recv(socket_connection, (void *)buff, 100, 0);
         //printf("Rx: %d\n", ret);
-        printf("%.*s", ret, buff);
+        printf("B: %s\n", buff);
+        //printf("%.*s", ret, buff);
     }
 
     ret = close(socket_connection);
