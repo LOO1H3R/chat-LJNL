@@ -32,7 +32,7 @@ void * writter(void * arg) {
     for(;;){
         sleep(1);
         char str[100]; 
-        printf("A: ");
+        printf("B: ");
         fflush(STDIN_FILENO); 
         fgets(str,sizeof(str),stdin);   
         ret = send(client_send, str, strlen(str), 0);         
@@ -61,10 +61,9 @@ void * listener(void * arg) {
     printf("Connected\n");
 
     for(;;){
-        sleep(1);
         ret = recv(socket_connection, (void *)buff, 100, 0);
-        printf("Rx: %d\n", ret);
-        printf("%s", buff);
+        //printf("Rx: %d\n", ret);
+        printf("A: %s\n", buff);
     }
 
     ret = close(socket_connection);
