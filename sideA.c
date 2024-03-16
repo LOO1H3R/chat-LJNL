@@ -8,11 +8,11 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
-#define WRITE 3000
-#define LISTEN 3001
+#define WRITE 5000 
+#define LISTEN 5001
 
 
-
+//ESCRIBE EN TU PROPIO PUERTO
 void * writter(void * arg) {
 
     struct sockaddr_in client;
@@ -24,10 +24,7 @@ void * writter(void * arg) {
     client.sin_port = htons(WRITE);
     client.sin_family = AF_INET;
 
-    for(int i = 0 ;i < 10; i++){
-        //sleep(1);
-        printf("Connecting to server\n");
-    }
+
     int ret = bind(sock, (const struct sockaddr *)&client, sizeof(client));
     ret = listen(sock, 10);
     
@@ -49,10 +46,6 @@ void * listener(void * arg) {
 
     int socket_connection = socket(AF_INET, SOCK_STREAM, 0);
 
-    for(int i = 0 ;i < 10; i++){
-        //sleep(1);
-        printf("Connecting to server\n");
-    }
     
     struct sockaddr_in server;
     memset(&server, 0 , sizeof(server));
@@ -61,10 +54,16 @@ void * listener(void * arg) {
     server.sin_port = htons(LISTEN);
     server.sin_family = AF_INET;
     
-    int ret = connect(socket_connection, (struct  sockaddr *)&server, sizeof(server) );
+    int ret = -1;
+    
+    while (ret != 0)
+    {
+        ret = connect(socket_connection, (struct  sockaddr *)&server, sizeof(server) );
+    }
+    printf("Connected\n");
 
     for(;;){
-        sleep(1);
+        //sleep(1);
         ret = recv(socket_connection, (void *)buff, 100, 0);
         //printf("Rx: %d\n", ret);
         printf("%.*s", ret, buff);
