@@ -8,8 +8,8 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
-#define WRITE 3001
-#define LISTEN 3000
+#define WRITE 5001
+#define LISTEN 5000
 
 
 
@@ -36,7 +36,7 @@ void * writter(void * arg) {
     for(int i = 0;i<5;i++){
         sleep(1);
         printf("Sending data...\n");
-        char str[100] = "Hello from Luther\n";        
+        char str[100] = "Hello from Jaz y Lau\n";        
         ret = send(client_send, str, strlen(str), 0);
         printf("Tx: %d\n", ret);
     }
@@ -48,11 +48,6 @@ void * listener(void * arg) {
     char buff[100];
 
     int socket_connection = socket(AF_INET, SOCK_STREAM, 0);
-
-    for(int i = 0 ;i < 10; i++){
-        //sleep(1);
-        //printf("Connecting to server\n");
-    }
     
     struct sockaddr_in server;
     memset(&server, 0 , sizeof(server));
@@ -62,6 +57,11 @@ void * listener(void * arg) {
     server.sin_family = AF_INET;
     
     int ret = connect(socket_connection, (struct  sockaddr *)&server, sizeof(server) );
+    while(ret != 0){
+        ret = connect(socket_connection, (struct  sockaddr *)&server, sizeof(server) );
+    }
+
+    printf("Connected\n");
 
     for(;;){
         sleep(1);
