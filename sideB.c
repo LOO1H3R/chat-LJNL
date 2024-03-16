@@ -24,21 +24,18 @@ void * writter(void * arg) {
     client.sin_port = htons(WRITE);
     client.sin_family = AF_INET;
 
-    for(int i = 0 ;i < 10; i++){
-        //sleep(1);
-        ////printf("Connecting to server\n");
-    }
     int ret = bind(sock, (const struct sockaddr *)&client, sizeof(client));
     ret = listen(sock, 10);
     
     int client_send = accept(sock, (struct sockaddr *) NULL, NULL);
     printf("Creating socket\n");
-    for(int i = 0;i<5;i++){
+    for(;;){
         sleep(1);
-        printf("Sending data...\n");
-        char str[100] = "Hello from Jaz y Lau\n";        
-        ret = send(client_send, str, strlen(str), 0);
-        printf("Tx: %d\n", ret);
+        char str[100]; 
+        printf("A: ");
+        fflush(STDIN_FILENO); 
+        fgets(str,sizeof(str),stdin);   
+        ret = send(client_send, str, strlen(str), 0);         
     }
     ret = close(sock);
     return 0;
@@ -66,8 +63,8 @@ void * listener(void * arg) {
     for(;;){
         sleep(1);
         ret = recv(socket_connection, (void *)buff, 100, 0);
-        //printf("Rx: %d\n", ret);
-        printf("%.*s", ret, buff);
+        printf("Rx: %d\n", ret);
+        printf("%s", buff);
     }
 
     ret = close(socket_connection);
