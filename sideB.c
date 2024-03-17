@@ -8,13 +8,15 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
+#include <linux/input.h>
+
 #define WRITE 5001
 #define LISTEN 5000
 
 
 
 void * writter(void * arg) {
-
+    printf("Writting\n");
     struct sockaddr_in client;
     
     //Dominio internet, icp, protocolo automático
@@ -42,6 +44,7 @@ void * writter(void * arg) {
 }
 
 void * listener(void * arg) {
+    printf("Listening\n");
     char buff[100];
 
     int socket_connection = socket(AF_INET, SOCK_STREAM, 0);
@@ -70,17 +73,41 @@ void * listener(void * arg) {
     return NULL;
 }
 
+void * button_listener(void * arg) {
+    printf("Input Test\n");
+    int input_fd = open("/dev/input/event0", O_RDWR);
+    if (input_fd == -1)
+        return NULL;
+
+    for (;;) {
+        struct input_event ev;
+        int n_bytes = read(input_fd, &ev, sizeof(struct input_event));
+        if (ev.type == EV_KEY && ev.code == 0x19C) {
+            if(ev.value == 0x1){
+                printf("Button Pressed\n");
+            }else{
+                printf("Button Released\n");
+            }
+        }
+    }
+
+    close(input_fd);
+    return NULL;
+}
+
 void main(int argc, char * argv[]) {
-    pthread_t th_c, th_p;
+    pthread_t th_c, th_p, th_b;
     int ret;
 
     printf("Creating Threads\n");
 
     ret = pthread_create(&th_c, NULL, writter, NULL);
     ret = pthread_create(&th_p, NULL, listener, NULL);
+    ret = pthread_create(&th_b, NULL, button_listener, NULL);
     
     ret = pthread_join(th_c, NULL);
     ret = pthread_join(th_p, NULL);
+    ret = pthread_join(th_b, NULL);
 
     return;
 }
