@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include <pthread.h>
 #include <arpa/inet.h>
@@ -16,6 +17,8 @@
 
 #define CHANNELS    2
 #define FRAMES      768  
+
+bool capture_audio = false;
 
 void * writter(void * arg) {
     printf("Writting\n");
@@ -75,7 +78,7 @@ void * listener(void * arg) {
     return NULL;
 }
 
-void audio_capture(void * arg) {
+void * audio_capture(void * arg) {
     printf("Audio Capture\n");
     int ret;
     FILE * rec_file = fopen("recording.wav", "w");
@@ -87,40 +90,23 @@ void audio_capture(void * arg) {
 
     snd_pcm_hw_params_alloca(&hw_params);
     ret = snd_pcm_hw_params_any(handle, hw_params);
-    if( (ret = snd_pcm_hw_params_set_access(handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0) {
-        printf("ERROR! Cannot set interleaved mode\n");
-        return;
-    }
-
+    ret = snd_pcm_hw_params_set_access(handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
     snd_pcm_format_t format = SND_PCM_FORMAT_S32_LE;
 
-    if( (ret = snd_pcm_hw_params_set_format(handle, hw_params, format)) < 0) {
-        printf("ERROR! Cannot set format\n");
-        return;
-    }
+    ret = snd_pcm_hw_params_set_format(handle, hw_params, format);
 
     int channels = CHANNELS;
 
-    if( (ret = snd_pcm_hw_params_set_channels(handle, hw_params, channels)) < 0) {
-        printf("ERROR! Cannot set Channels\n");
-        return;
-    }
+    ret = snd_pcm_hw_params_set_channels(handle, hw_params, channels);
 
     int rate = 48000;
-    if( (ret = snd_pcm_hw_params_set_rate_near(handle, hw_params, &rate, 0)) < 0) {
-        printf("ERROR! Cannot set Rate %d\n", rate);
-        return;
-    }
+    ret = snd_pcm_hw_params_set_rate_near(handle, hw_params, &rate, 0);
 
-    if( (ret = snd_pcm_hw_params(handle, hw_params)) < 0) {
-        printf("ERROR! Cannot set hw params\n");
-        return;
-    }
-
+    ret = snd_pcm_hw_params(handle, hw_params);
     int size = CHANNELS * FRAMES * sizeof(uint32_t);
     uint32_t * buffer = (uint32_t * )malloc(size);
 
-    for (;;) {
+    while (capture_audio) {
         snd_pcm_sframes_t frames = snd_pcm_readi(handle, buffer, FRAMES);
         int n_bytes = fwrite(buffer, 1, size, rec_file);
         fflush(rec_file);
@@ -140,11 +126,14 @@ void * button_listener(void * arg) {
         struct input_event ev;
         int n_bytes = read(input_fd, &ev, sizeof(struct input_event));
         if (ev.type == EV_KEY && ev.code == 0x19C) {
-            if(ev.value == 0x1){
+            if (ev.value == 0x1) {
                 printf("Button Pressed\n");
-                audio_capture(NULL);
-            }else{
+                capture_audio = true;
+                pthread_t thread_id;
+                pthread_create(&thread_id, NULL, audio_capture, NULL);
+            } else {
                 printf("Button Released\n");
+                capture_audio = false;
             }
         }
     }
@@ -163,6 +152,7 @@ void main(int argc, char * argv[]) {
     ret = pthread_create(&th_c, NULL, writter, NULL);
     ret = pthread_create(&th_p, NULL, listener, NULL);
     ret = pthread_create(&th_b, NULL, button_listener, NULL);
+    pthread_detach(th_b);
     
     ret = pthread_join(th_c, NULL);
     ret = pthread_join(th_p, NULL);
