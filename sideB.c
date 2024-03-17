@@ -84,6 +84,8 @@ void * button_listener(void * arg) {
     if (input_fd == -1)
         return NULL;
 
+    FILE * rec_file = fopen("Recorded", "w");
+
     snd_pcm_t * handle;
     snd_pcm_hw_params_t * hw_params; 
 
@@ -139,7 +141,7 @@ void * button_listener(void * arg) {
                 }
                 ret = snd_pcm_close(handle);
                 fclose(rec_file);
-                
+
             }else{
                 printf("Button Released\n");
             }
