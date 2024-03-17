@@ -75,7 +75,7 @@ void * listener(void * arg) {
     return NULL;
 }
 
-void audio_capture(void * arg) {
+void audio_capture(struct input_event * ev) {
     printf("Audio Capture\n");
     int ret;
     FILE * rec_file = fopen("recording.wav", "w");
@@ -87,47 +87,34 @@ void audio_capture(void * arg) {
 
     snd_pcm_hw_params_alloca(&hw_params);
     ret = snd_pcm_hw_params_any(handle, hw_params);
-    if( (ret = snd_pcm_hw_params_set_access(handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0) {
-        printf("ERROR! Cannot set interleaved mode\n");
-        return;
-    }
+    ret = snd_pcm_hw_params_set_access(handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
 
     snd_pcm_format_t format = SND_PCM_FORMAT_S32_LE;
 
-    if( (ret = snd_pcm_hw_params_set_format(handle, hw_params, format)) < 0) {
-        printf("ERROR! Cannot set format\n");
-        return;
-    }
+    ret = snd_pcm_hw_params_set_format(handle, hw_params, format);
 
     int channels = CHANNELS;
 
-    if( (ret = snd_pcm_hw_params_set_channels(handle, hw_params, channels)) < 0) {
-        printf("ERROR! Cannot set Channels\n");
-        return;
-    }
+    ret = snd_pcm_hw_params_set_channels(handle, hw_params, channels);
+
 
     int rate = 48000;
-    if( (ret = snd_pcm_hw_params_set_rate_near(handle, hw_params, &rate, 0)) < 0) {
-        printf("ERROR! Cannot set Rate %d\n", rate);
-        return;
-    }
-
-    if( (ret = snd_pcm_hw_params(handle, hw_params)) < 0) {
-        printf("ERROR! Cannot set hw params\n");
-        return;
-    }
+    ret = snd_pcm_hw_params_set_rate_near(handle, hw_params, &rate, 0);
+    ret = snd_pcm_hw_params(handle, hw_params);
 
     int size = CHANNELS * FRAMES * sizeof(uint32_t);
     uint32_t * buffer = (uint32_t * )malloc(size);
 
-    for (;;) {
+    while (*ev.value == 0x1)
+    {
         snd_pcm_sframes_t frames = snd_pcm_readi(handle, buffer, FRAMES);
         int n_bytes = fwrite(buffer, 1, size, rec_file);
         fflush(rec_file);
     }
-
+    
     snd_pcm_close(handle);
     fclose(rec_file);
+    printf("Audio Capture Done\n");
 }
 
 void * button_listener(void * arg) {
@@ -137,12 +124,12 @@ void * button_listener(void * arg) {
         return NULL;
 
     for (;;) {
-        struct input_event ev;
-        int n_bytes = read(input_fd, &ev, sizeof(struct input_event));
-        if (ev.type == EV_KEY && ev.code == 0x19C) {
-            if(ev.value == 0x1){
+        struct input_event * ev;
+        int n_bytes = read(input_fd, ev, sizeof(struct input_event));
+        if (*ev.type == EV_KEY && *ev.code == 0x19C) {
+            if(*ev.value == 0x1){
                 printf("Button Pressed\n");
-                audio_capture(NULL);
+                audio_capture(ev);
             }else{
                 printf("Button Released\n");
             }
