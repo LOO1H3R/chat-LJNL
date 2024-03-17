@@ -9,11 +9,13 @@
 #include <sys/socket.h>
 
 #include <linux/input.h>
+#include <alsa/asoundlib.h>
 
 #define WRITE 5001
 #define LISTEN 5000
 
-
+#define CHANNELS    2
+#define FRAMES      768  
 
 void * writter(void * arg) {
     printf("Writting\n");
@@ -36,7 +38,7 @@ void * writter(void * arg) {
         char str[100]; 
         printf("B: ");
         fflush(STDIN_FILENO); 
-        fgets(str,sizeof(str),stdin);   
+        char * gets = fgets(str,sizeof(str),stdin);   
         ret = send(client_send, str, strlen(str), 0);         
     }
     ret = close(sock);
@@ -73,6 +75,61 @@ void * listener(void * arg) {
     return NULL;
 }
 
+void audio_capture(void * arg) {
+    printf("Audio Capture\n");
+    int ret;
+    FILE * rec_file = fopen("recording.wav", "w");
+
+    snd_pcm_t * handle;
+    snd_pcm_hw_params_t * hw_params; 
+
+    ret = snd_pcm_open(&handle, "hw:0", SND_PCM_STREAM_CAPTURE, 0);
+
+    snd_pcm_hw_params_alloca(&hw_params);
+    ret = snd_pcm_hw_params_any(handle, hw_params);
+    if( (ret = snd_pcm_hw_params_set_access(handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0) {
+        printf("ERROR! Cannot set interleaved mode\n");
+        return;
+    }
+
+    snd_pcm_format_t format = SND_PCM_FORMAT_S32_LE;
+
+    if( (ret = snd_pcm_hw_params_set_format(handle, hw_params, format)) < 0) {
+        printf("ERROR! Cannot set format\n");
+        return;
+    }
+
+    int channels = CHANNELS;
+
+    if( (ret = snd_pcm_hw_params_set_channels(handle, hw_params, channels)) < 0) {
+        printf("ERROR! Cannot set Channels\n");
+        return;
+    }
+
+    int rate = 48000;
+    if( (ret = snd_pcm_hw_params_set_rate_near(handle, hw_params, &rate, 0)) < 0) {
+        printf("ERROR! Cannot set Rate %d\n", rate);
+        return;
+    }
+
+    if( (ret = snd_pcm_hw_params(handle, hw_params)) < 0) {
+        printf("ERROR! Cannot set hw params\n");
+        return;
+    }
+
+    int size = CHANNELS * FRAMES * sizeof(uint32_t);
+    uint32_t * buffer = (uint32_t * )malloc(size);
+
+    for (;;) {
+        snd_pcm_sframes_t frames = snd_pcm_readi(handle, buffer, FRAMES);
+        int n_bytes = fwrite(buffer, 1, size, rec_file);
+        fflush(rec_file);
+    }
+
+    snd_pcm_close(handle);
+    fclose(rec_file);
+}
+
 void * button_listener(void * arg) {
     printf("Input Test\n");
     int input_fd = open("/dev/input/event0", O_RDWR);
@@ -85,6 +142,7 @@ void * button_listener(void * arg) {
         if (ev.type == EV_KEY && ev.code == 0x19C) {
             if(ev.value == 0x1){
                 printf("Button Pressed\n");
+                audio_capture(NULL);
             }else{
                 printf("Button Released\n");
             }
@@ -94,6 +152,7 @@ void * button_listener(void * arg) {
     close(input_fd);
     return NULL;
 }
+
 
 void main(int argc, char * argv[]) {
     pthread_t th_c, th_p, th_b;
