@@ -193,7 +193,7 @@ void reproduce_audio()
     if ((ret = snd_pcm_hw_params_set_access(handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
     {
         printf("ERROR! Cannot set interleaved mode\n");
-        return ret;
+        return;
     }
 
     snd_pcm_format_t format = SND_PCM_FORMAT_S32_LE;
@@ -201,7 +201,7 @@ void reproduce_audio()
     if ((ret = snd_pcm_hw_params_set_format(handle, hw_params, format)) < 0)
     {
         printf("ERROR! Cannot set format\n");
-        return ret;
+        return;
     }
 
     int channels = 2;
@@ -209,21 +209,21 @@ void reproduce_audio()
     if ((ret = snd_pcm_hw_params_set_channels(handle, hw_params, channels)) < 0)
     {
         printf("ERROR! Cannot set Channels\n");
-        return ret;
+        return;
     }
 
     int rate = 48000;
     if ((ret = snd_pcm_hw_params_set_rate_near(handle, hw_params, &rate, 0)) < 0)
     {
         printf("ERROR! Cannot set Rate %d\n", rate);
-        return ret;
+        return;
     }
 
 
     if ((ret = snd_pcm_hw_params(handle, hw_params)) < 0)
     {
         printf("ERROR! Cannot set hw params\n");
-        return ret;
+        return;
     }
 
     int size = CHANNELS * FRAMES * sizeof(uint32_t);
@@ -256,17 +256,15 @@ void send_audio()
     FILE* wav_file = fopen("audio.wav", "rb");
     int size = CHANNELS * FRAMES * sizeof(uint32_t);
     char buffer[size];
-    size_t bytes_read;
     int ret = bind(sock, (const struct sockaddr*)&client, sizeof(client));
     ret = listen(sock, 10);
 
     int client_send = accept(sock, (struct sockaddr*)NULL, NULL);
     printf("Creating socket\n");
-    while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, wav_file)) > 0)
-        send(sockfd, buffer, bytes_read, 0);
+    fread(buffer, 1, size, wav_file);
+    send(sock, buffer, size, 0);
     ret = close(sock);
-    close(sockfd);
-    return 0;
+    fclose(wav_file);
 }
 
 void* rcv_audio(void* arg)
@@ -281,25 +279,25 @@ void* rcv_audio(void* arg)
     server.sin_addr.s_addr = inet_addr("192.168.1.10"); // Server IP address
     server.sin_port = htons(LISTEN);
     server.sin_family = AF_INET;
-    int ret = connect(socket_connection, (struct  sockaddr*)&server, sizeof(server));
+    int ret = connect(socket_audio, (struct  sockaddr*)&server, sizeof(server));
     while (ret != 0)
     {
-        ret = connect(socket_connection, (struct  sockaddr*)&server, sizeof(server));
+        ret = connect(socket_audio, (struct  sockaddr*)&server, sizeof(server));
     }
-    printf("Server audio listened connected\n");
+    printf("Server audio listener connected\n");
 
     for (;;)
     {
-        ret = recv(socket_audio, (void*)buffer, 100, 0);
+        ret = recv(socket_audio, (void*)buffer, size, 0);
         FILE* wav_file = fopen("audio_rcv.wav", "wb");
         fwrite(buffer, 1, size, wav_file);
-        close(wav_file);
+        fclose(wav_file);
         // turn on LED
         FILE* led = fopen(LED_FILE, "w");
         fputc('1', led);
         fclose(led);
     }
-    ret = close(socket_connection);
+    ret = close(socket_audio);
     return NULL;
 }
 
