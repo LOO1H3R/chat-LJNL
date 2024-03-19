@@ -27,7 +27,10 @@
 bool capture_audio = false;
 sem_t mutex;
 
-void* writter(void* arg)
+void send_audio();
+void reproduce_audio();
+
+void * writter(void* arg)
 {
     printf("Writting\n");
     struct sockaddr_in client;
@@ -57,7 +60,7 @@ void* writter(void* arg)
     return 0;
 }
 
-void* listener(void* arg)
+void * listener(void* arg)
 {
     printf("Listening\n");
     char buff[100];
@@ -256,54 +259,79 @@ void send_audio(){
     client.sin_port = htons(AUD_PORT_SND);
     client.sin_family = AF_INET;
 
-    FILE* wav_file = fopen("send_audio.wav", "rb");
-    int size = CHANNELS * FRAMES * sizeof(uint32_t);
-    char buffer[size];
+    uint32_t buffer[CHANNELS * FRAMES];
+    size_t size;
+
     int ret = bind(sock, (const struct sockaddr*)&client, sizeof(client));
     ret = listen(sock, 10);
 
     int client_send = accept(sock, (struct sockaddr*)NULL, NULL);
-    printf("Creating socket\n");
-    fread(buffer, 1, size, wav_file);
-    send(sock, buffer, size, 0);
-    close(client_send);
-    ret = close(sock);
+    printf("Creating sending audio socket\n");
+    
+    FILE* wav_file = fopen("send_audio.wav", "rb");
+    while ((size = fread(buffer, sizeof(uint32_t), CHANNELS * FRAMES, wav_file)) > 0) {
+        ret = send(client_send, buffer, size * sizeof(uint32_t), 0);
+        if (ret < 0) {
+            perror("Error sending audio data");
+            fclose(wav_file);
+            close(client_send);
+            close(sock);
+            return;
+        }
+    }
+
+    printf("Audio sent successfully\n");
+
+    // Close connections and file
     fclose(wav_file);
+    close(client_send);
+    close(sock);
 }
 
-
-void * rcv_audio(void* arg)
-{
+void *rcv_audio(void *arg) {
     printf("Receiving Audio\n");
     struct sockaddr_in server;
     int size = CHANNELS * FRAMES * sizeof(uint32_t);
     char buffer[size];
 
     int socket_audio = socket(AF_INET, SOCK_STREAM, 0);
+
     memset(&server, 0, sizeof(server));
     server.sin_addr.s_addr = inet_addr("192.168.1.10"); // Server IP address
     server.sin_port = htons(AUD_PORT_RCV);
     server.sin_family = AF_INET;
-    int ret = connect(socket_audio, (struct  sockaddr*)&server, sizeof(server));
-    while (ret != 0)
-    {
-        ret = connect(socket_audio, (struct  sockaddr*)&server, sizeof(server));
+
+    int ret = connect(socket_audio, (struct sockaddr *)&server, sizeof(server));
+    while (ret == -1) {
+        ret = connect(socket_audio, (struct sockaddr *)&server, sizeof(server));
     }
     printf("Server audio listener connected\n");
 
-    for (;;)
-    {
-        ret = recv(socket_audio, (void*)buffer, size, 0);
-        FILE* wav_file = fopen("audio_rcv.wav", "wb");
-        fwrite(buffer, 1, size, wav_file);
-        fclose(wav_file);
-        // turn on LED
-        /*
-        FILE* led = fopen(LED_FILE, "w");
-        fputc('1', led);
-        fclose(led);*/
+    FILE *wav_file = fopen("audio_rcv.wav", "wb");
+    if (!wav_file) {
+        perror("Error opening audio file");
+        close(socket_audio);
+        return NULL;
     }
-    ret = close(socket_audio);
+
+    // Receive and write audio data to the file
+    ssize_t bytes_received;
+    while ((bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0)) > 0) {
+        size_t items_written = fwrite(buffer, sizeof(char), bytes_received, wav_file);
+        if (items_written < bytes_received) {
+            perror("Error writing to audio file");
+            fclose(wav_file);
+            close(socket_audio);
+            return NULL;
+        }
+    }
+
+    printf("Audio received successfully\n");
+
+    // Close connections and file
+    fclose(wav_file);
+    close(socket_audio);
+
     return NULL;
 }
 
