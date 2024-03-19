@@ -16,14 +16,16 @@
 
 #define WRITE 5001
 #define LISTEN 5000
+#define AUD_PORT_RCV 5002
+#define AUD_PORT_SND 5003
+
+#define LED_FILE "/sys/class/leds/gpio-led/brightness"
 
 #define CHANNELS    2
 #define FRAMES      768  
 
 bool capture_audio = false;
 sem_t mutex;
-
-void * send_audio();
 
 void* writter(void* arg)
 {
@@ -44,7 +46,7 @@ void* writter(void* arg)
     printf("Creating socket\n");
     for (;;)
     {
-        sleep(1);
+        //sleep(1);
         char str[100];
         printf("B: ");
         fflush(STDIN_FILENO);
@@ -80,20 +82,19 @@ void* listener(void* arg)
     for (;;)
     {
         ret = recv(socket_connection, (void*)buff, 100, 0);
-        sem_wait(&mutex);
+        //sem_wait(&mutex);
         printf("\b\bA: %s\nB: ", buff);
-        sem_post(&mutex);
+        //sem_post(&mutex);
     }
 
     ret = close(socket_connection);
     return NULL;
 }
 
-void* audio_capture(void* arg)
-{
+void * audio_capture(void* arg){
     printf("Audio Capture\n");
     int ret;
-    FILE* rec_file = fopen("recording.wav", "w");
+    FILE* rec_file = fopen("send_audio.wav", "w");
 
     snd_pcm_t* handle;
     snd_pcm_hw_params_t* hw_params;
@@ -129,8 +130,7 @@ void* audio_capture(void* arg)
     fclose(rec_file);
 }
 
-void* button_listener(void* arg)
-{
+void * button_listener(void* arg){
     printf("Input Test\n");
     int input_fd = open("/dev/input/event0", O_RDWR);
     if (input_fd == -1)
@@ -154,10 +154,13 @@ void* button_listener(void* arg)
                 printf("Button Released\n");
                 capture_audio = false;
                 send_audio();
+                FILE* led = fopen(LED_FILE, "w");
+                fputc('1', led);
+                fclose(led);
             }
         }
         // reporoduce audio
-        /*
+        
         if (ev.type == EV_KEY && ev.code == 207)
         {
             if (ev.value == 0x1)
@@ -170,16 +173,15 @@ void* button_listener(void* arg)
                 fclose(led);
             }
 
-        }*/
+        }
     }
 
     close(input_fd);
     return NULL;
 }
 
-/*
-void reproduce_audio()
-{
+
+void reproduce_audio(){
     FILE* rec_file = fopen("audio_rcv.wav", "r");
 
     snd_pcm_t* handle;
@@ -242,20 +244,19 @@ void reproduce_audio()
     ret = snd_pcm_close(handle);
     fclose(rec_file);
 
-}*/
+}
 
-void * send_audio()
-{
+void send_audio(){
     printf("Sending Audio\n");
     struct sockaddr_in client;
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);
 
     inet_pton(AF_INET, "192.168.1.20", &(client.sin_addr));
-    client.sin_port = htons(WRITE);
+    client.sin_port = htons(AUD_PORT_SND);
     client.sin_family = AF_INET;
 
-    FILE* wav_file = fopen("audio.wav", "rb");
+    FILE* wav_file = fopen("send_audio.wav", "rb");
     int size = CHANNELS * FRAMES * sizeof(uint32_t);
     char buffer[size];
     int ret = bind(sock, (const struct sockaddr*)&client, sizeof(client));
@@ -265,11 +266,13 @@ void * send_audio()
     printf("Creating socket\n");
     fread(buffer, 1, size, wav_file);
     send(sock, buffer, size, 0);
+    close(client_send);
     ret = close(sock);
     fclose(wav_file);
 }
-/*
-void* rcv_audio(void* arg)
+
+
+void * rcv_audio(void* arg)
 {
     printf("Receiving Audio\n");
     struct sockaddr_in server;
@@ -279,7 +282,7 @@ void* rcv_audio(void* arg)
     int socket_audio = socket(AF_INET, SOCK_STREAM, 0);
     memset(&server, 0, sizeof(server));
     server.sin_addr.s_addr = inet_addr("192.168.1.10"); // Server IP address
-    server.sin_port = htons(LISTEN);
+    server.sin_port = htons(AUD_PORT_RCV);
     server.sin_family = AF_INET;
     int ret = connect(socket_audio, (struct  sockaddr*)&server, sizeof(server));
     while (ret != 0)
@@ -295,37 +298,38 @@ void* rcv_audio(void* arg)
         fwrite(buffer, 1, size, wav_file);
         fclose(wav_file);
         // turn on LED
+        /*
         FILE* led = fopen(LED_FILE, "w");
         fputc('1', led);
-        fclose(led);
+        fclose(led);*/
     }
     ret = close(socket_audio);
     return NULL;
 }
-*/
+
 
 
 void main(int argc, char* argv[])
 {
     pthread_t th_c, th_p, th_b, th_a, th_s;
     int ret;
-    sem_init(&mutex, 0, 1);
+    //sem_init(&mutex, 0, 1);
 
     printf("Creating Threads\n");
 
     ret = pthread_create(&th_c, NULL, writter, NULL);
     ret = pthread_create(&th_p, NULL, listener, NULL);
     ret = pthread_create(&th_b, NULL, button_listener, NULL);
-    //ret = pthread_create(&th_a, NULL, rcv_audio, NULL);
-    ret = pthread_create(&th_s, NULL, send_audio, NULL);
+    ret = pthread_create(&th_a, NULL, rcv_audio, NULL);
+    //ret = pthread_create(&th_s, NULL, send_audio, NULL);
     pthread_detach(th_b);
 
     ret = pthread_join(th_c, NULL);
     ret = pthread_join(th_p, NULL);
     ret = pthread_join(th_b, NULL);
-    //ret = pthread_join(th_a, NULL);
-    ret = pthread_join(th_s, NULL);
-    sem_destroy(&mutex);
+    ret = pthread_join(th_a, NULL);
+    //ret = pthread_join(th_s, NULL);
+    //sem_destroy(&mutex);
 
     return;
 }
