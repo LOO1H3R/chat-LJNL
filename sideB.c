@@ -25,9 +25,10 @@
 #define FRAMES      768  
 
 bool capture_audio = false;
+volatile int send_flag = 0;
+pthread_mutex_t send_flag_mutex = PTHREAD_MUTEX_INITIALIZER;
 sem_t mutex;
 
-void send_audio();
 void reproduce_audio();
 
 void * writter(void* arg)
@@ -54,8 +55,12 @@ void * writter(void* arg)
         printf("B: ");
         fflush(STDIN_FILENO);
         char* gets = fgets(str, sizeof(str), stdin);
+        if(strcmp(str, "exit\n") == 0){
+            break;
+        }
         ret = send(client_send, str, strlen(str), 0);
     }
+    ret = close(client_send);
     ret = close(sock);
     return 0;
 }
@@ -85,11 +90,13 @@ void * listener(void* arg)
     for (;;)
     {
         ret = recv(socket_connection, (void*)buff, 100, 0);
-        //sem_wait(&mutex);
+        if (ret <= 0)
+        {
+            break;
+        }        
         printf("\b\bA: %s\nB: ", buff);
-        //sem_post(&mutex);
     }
-
+    printf("Connection closed\n");
     ret = close(socket_connection);
     return NULL;
 }
@@ -156,7 +163,10 @@ void * button_listener(void* arg){
             {
                 printf("Button Released\n");
                 capture_audio = false;
-                send_audio();
+                pthread_mutex_lock(&send_flag_mutex);
+                send_flag = 1;
+                pthread_mutex_unlock(&send_flag_mutex);
+                printf("Flag: %d\n", send_flag);
                 FILE* led = fopen(LED_FILE, "w");
                 fputc('1', led);
                 fclose(led);
@@ -249,7 +259,7 @@ void reproduce_audio(){
 
 }
 
-void send_audio(){
+void * send_audio(){
     printf("Sending Audio\n");
     struct sockaddr_in client;
 
@@ -267,23 +277,33 @@ void send_audio(){
 
     int client_send = accept(sock, (struct sockaddr*)NULL, NULL);
     printf("Creating sending audio socket\n");
-    
-    FILE* wav_file = fopen("send_audio.wav", "rb");
-    while ((size = fread(buffer, sizeof(uint32_t), CHANNELS * FRAMES, wav_file)) > 0) {
-        ret = send(client_send, buffer, size * sizeof(uint32_t), 0);
-        if (ret < 0) {
-            perror("Error sending audio data");
-            fclose(wav_file);
-            close(client_send);
-            close(sock);
-            return;
+    for(;;){
+        pthread_mutex_lock(&send_flag_mutex);
+        while (send_flag == 0) {
+            pthread_mutex_unlock(&send_flag_mutex);
+            pthread_mutex_lock(&send_flag_mutex);
         }
+        printf("Sending audio\n");
+        FILE* wav_file = fopen("send_audio.wav", "rb");
+        while ((size = fread(buffer, sizeof(uint32_t), CHANNELS * FRAMES, wav_file)) > 0) {
+            ret = send(client_send, buffer, size * sizeof(uint32_t), 0);
+            if (ret < 0) {
+                perror("Error sending audio data");
+                fclose(wav_file);
+                close(client_send);
+                close(sock);
+                return 0;
+            }
+        }
+        fclose(wav_file);
+        printf("Audio sent successfully\n");
+
+        send_flag = 0;
+        pthread_mutex_unlock(&send_flag_mutex);
+        bzero(buffer, sizeof(buffer));
     }
-
-    printf("Audio sent successfully\n");
-
     // Close connections and file
-    fclose(wav_file);
+    
     close(client_send);
     close(sock);
 }
@@ -307,29 +327,24 @@ void *rcv_audio(void *arg) {
     }
     printf("Server audio listener connected\n");
 
-    FILE *wav_file = fopen("audio_rcv.wav", "wb");
-    if (!wav_file) {
-        perror("Error opening audio file");
-        close(socket_audio);
-        return NULL;
-    }
-
-    // Receive and write audio data to the file
-    ssize_t bytes_received;
-    while ((bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0)) > 0) {
-        size_t items_written = fwrite(buffer, sizeof(char), bytes_received, wav_file);
-        if (items_written < bytes_received) {
-            perror("Error writing to audio file");
-            fclose(wav_file);
-            close(socket_audio);
-            return NULL;
+    for(;;){
+        FILE *wav_file = fopen("audio_rcv.wav", "wb");
+        ssize_t bytes_received;
+        while ((bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0)) > 0) {
+            size_t items_written = fwrite(buffer, sizeof(char), bytes_received, wav_file);
+            if (items_written < bytes_received) {
+                perror("Error writing to audio file");
+                fclose(wav_file);
+                close(socket_audio);
+                return NULL;
+            }
         }
+        fclose(wav_file);
+        bzero(buffer, sizeof(buffer));
+        printf("Audio received successfully\n");
     }
-
-    printf("Audio received successfully\n");
 
     // Close connections and file
-    fclose(wav_file);
     close(socket_audio);
 
     return NULL;
@@ -349,15 +364,16 @@ void main(int argc, char* argv[])
     ret = pthread_create(&th_p, NULL, listener, NULL);
     ret = pthread_create(&th_b, NULL, button_listener, NULL);
     ret = pthread_create(&th_a, NULL, rcv_audio, NULL);
-    //ret = pthread_create(&th_s, NULL, send_audio, NULL);
+    ret = pthread_create(&th_s, NULL, send_audio, NULL);
     pthread_detach(th_b);
 
     ret = pthread_join(th_c, NULL);
     ret = pthread_join(th_p, NULL);
     ret = pthread_join(th_b, NULL);
     ret = pthread_join(th_a, NULL);
-    //ret = pthread_join(th_s, NULL);
+    ret = pthread_join(th_s, NULL);
     //sem_destroy(&mutex);
+    pthread_mutex_destroy(&send_flag_mutex);
 
     return;
 }
