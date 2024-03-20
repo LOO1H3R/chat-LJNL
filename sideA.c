@@ -215,8 +215,6 @@ void * button_listener(void* arg){
                 // turn off LED
                 FILE* led = fopen(LED_FILE, "w");
                 fputc('0', led);
-                fputc('0', led);
-                fputc('0', led);
                 fclose(led);
             }
         }
