@@ -31,6 +31,8 @@ int init_volume = 100;
 volatile int send_flag = 0;
 pthread_mutex_t send_flag_mutex = PTHREAD_MUTEX_INITIALIZER;
 sem_t mutex;
+volatile int audio_played = 0;
+pthread_mutex_t audio_played_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void reproduce_audio();
 
@@ -53,9 +55,8 @@ void * writter(void* arg)
     printf("Creating socket\n");
     for (;;)
     {
-        //sleep(1);
         char str[100];
-        printf("B: ");
+        printf("A: ");
         fflush(STDIN_FILENO);
         char* gets = fgets(str, sizeof(str), stdin);
         if(strcmp(str, "exit\n") == 0){
@@ -97,7 +98,7 @@ void * listener(void* arg)
         {
             break;
         }        
-        printf("\b\bA: %s\nB: ", buff);
+        printf("B: %s\n", buff);
     }
     printf("Connection closed\n");
     ret = close(socket_connection);
@@ -198,10 +199,7 @@ void * button_listener(void* arg){
                 pthread_mutex_lock(&send_flag_mutex);
                 send_flag = 1;
                 pthread_mutex_unlock(&send_flag_mutex);
-                printf("Flag: %d\n", send_flag);
-                FILE* led = fopen(LED_FILE, "w");
-                fputc('1', led);
-                fclose(led);
+                //printf("Flag: %d\n", send_flag);
             }
         }
         // reporoduce audio
@@ -212,12 +210,6 @@ void * button_listener(void* arg){
             {
                 printf("Button Pressed\n");
                 reproduce_audio();
-                // turn off LED
-                FILE* led = fopen(LED_FILE, "w");
-                fputc('0', led);
-                fputc('0', led);
-                fputc('0', led);
-                fclose(led);
             }
         }
         if( ev.type == EV_KEY && ev.code == 103)
@@ -306,7 +298,9 @@ void reproduce_audio(){
     ret = snd_pcm_drain(handle);
     ret = snd_pcm_close(handle);
     fclose(rec_file);
-
+    pthread_mutex_lock(&audio_played_mutex);
+    audio_played = 1;
+    pthread_mutex_unlock(&audio_played_mutex);
 }
 
 void * send_audio(){
@@ -335,8 +329,8 @@ void * send_audio(){
         }
         printf("Sending audio\n");
         FILE* wav_file = fopen("send_audio.wav", "rb");
-        while ((size = fread(buffer, sizeof(uint32_t), CHANNELS * FRAMES, wav_file)) > 0) {
-            ret = send(client_send, buffer, size * sizeof(uint32_t), 0);
+        while ((size = fread(buffer, sizeof(uint8_t), CHANNELS * FRAMES, wav_file)) > 0) {
+            ret = send(client_send, buffer, size * sizeof(uint8_t), 0);
             if (ret < 0) {
                 perror("Error sending audio data");
                 fclose(wav_file);
@@ -345,7 +339,6 @@ void * send_audio(){
                 return 0;
             }
         }
-        
         fclose(wav_file);
         printf("Audio sent successfully\n");
 
@@ -353,8 +346,6 @@ void * send_audio(){
         pthread_mutex_unlock(&send_flag_mutex);
         bzero(buffer, sizeof(buffer));
     }
-    // Close connections and file
-    
     close(client_send);
     close(sock);
 }
@@ -373,34 +364,49 @@ void *rcv_audio(void *arg) {
     server.sin_family = AF_INET;
 
     int ret = connect(socket_audio, (struct sockaddr *)&server, sizeof(server));
+    
     while (ret == -1) {
         ret = connect(socket_audio, (struct sockaddr *)&server, sizeof(server));
     }
     printf("Server audio listener connected\n");
 
-    FILE* blue_led = fopen(LED_FILE, "w");
     FILE *wav_file = fopen("audio_rcv.wav", "wb");
-    
+    int res = ftruncate(fileno(wav_file), 0);
+    fseek(wav_file, 0, SEEK_SET);
+
     int flags = fcntl(socket_audio, F_GETFL, 0);
     fcntl(socket_audio, F_SETFL, flags | O_NONBLOCK);
 
     ssize_t bytes_received;
+    int truncate = 0;
     while (1) {
-        if ((bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0)) > 0)
-        {
+        if(truncate == 0 && audio_played == 1){
+            printf("Truncating file\n");
             int res = ftruncate(fileno(wav_file), 0);
             fseek(wav_file, 0, SEEK_SET);
-            size_t items_written = fwrite(buffer, sizeof(char), bytes_received, wav_file);
-            fputc('2', blue_led);
-            fputc('5',blue_led);
-            fputc('5',blue_led);
+            truncate = 1;
+            pthread_mutex_lock(&audio_played_mutex);
+            audio_played = 0;
+            pthread_mutex_unlock(&audio_played_mutex);
+            FILE* blue_led = fopen(LED_FILE, "w");
+            fputc('0', blue_led);
+            fputc('0', blue_led);
+            fputc('0', blue_led);
             fclose(blue_led);
-            while ((bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0)) > 0) {
-                size_t items_written = fwrite(buffer, sizeof(char), bytes_received, wav_file);
-            }
-        }        ///MOVER EL CHILE DENTRO DEL IF
-        //printf("Audio received\n");
+        }
+        if(bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0) <= 0){
+            truncate = 0;
+        }
+        while ((bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0)) > 0) {
+           size_t items_written = fwrite(buffer, sizeof(char), bytes_received, wav_file);
+            FILE* blue_led = fopen(LED_FILE, "w");
+            fputc('2', blue_led);
+            fputc('5', blue_led);
+            fputc('5', blue_led);
+            fclose(blue_led);
+        }
     }
+    
     fclose(wav_file);
     close(socket_audio);
 
@@ -413,9 +419,14 @@ void main(int argc, char* argv[])
 {
     pthread_t th_c, th_p, th_b, th_a, th_s;
     int ret;
-    //sem_init(&mutex, 0, 1);
 
-    printf("Creating Threads\n");
+    //printf("Creating Threads\n");
+
+    FILE* led = fopen(LED_FILE, "w");
+    fputc('0', led);
+    fputc('0', led);
+    fputc('0', led);
+    fclose(led);
 
     ret = pthread_create(&th_c, NULL, writter, NULL);
     ret = pthread_create(&th_p, NULL, listener, NULL);
@@ -429,8 +440,9 @@ void main(int argc, char* argv[])
     ret = pthread_join(th_b, NULL);
     ret = pthread_join(th_a, NULL);
     ret = pthread_join(th_s, NULL);
-    //sem_destroy(&mutex);
+
     pthread_mutex_destroy(&send_flag_mutex);
+    pthread_mutex_destroy(&audio_played_mutex);
 
     return;
 }
