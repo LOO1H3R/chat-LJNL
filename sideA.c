@@ -24,7 +24,10 @@
 #define CHANNELS    2
 #define FRAMES      768  
 
+#define END_MESSAGE "1"
+
 bool capture_audio = false;
+int init_volume = 100;
 volatile int send_flag = 0;
 pthread_mutex_t send_flag_mutex = PTHREAD_MUTEX_INITIALIZER;
 sem_t mutex;
@@ -140,11 +143,40 @@ void * audio_capture(void* arg){
     fclose(rec_file);
 }
 
+static void set_volume(long volume)
+{
+    long min, max;
+    volume = init_volume + volume;
+    init_volume = volume;
+    printf("Volume: %ld\n", volume);
+    snd_mixer_t *handle;
+    snd_mixer_selem_id_t *sid;
+    const char *card = "hw:1";
+    const char *selem_name = "Softmaster";
+
+    snd_mixer_open(&handle, 0);
+    snd_mixer_attach(handle, card);
+    snd_mixer_selem_register(handle, NULL, NULL);
+    snd_mixer_load(handle);
+
+    snd_mixer_selem_id_alloca(&sid);
+    snd_mixer_selem_id_set_index(sid, 0);
+    snd_mixer_selem_id_set_name(sid, selem_name);
+
+    snd_mixer_elem_t* elem = snd_mixer_find_selem(handle, sid);
+    snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
+    snd_mixer_selem_set_playback_volume_all(elem, volume * max / 100);
+
+    snd_mixer_close(handle);
+}
+
 void * button_listener(void* arg){
     printf("Input Test\n");
     int input_fd = open("/dev/input/event0", O_RDWR);
     if (input_fd == -1)
         return NULL;
+
+
 
     for (;;)
     {
@@ -181,12 +213,28 @@ void * button_listener(void* arg){
                 printf("Button Pressed\n");
                 reproduce_audio();
                 // turn off LED
-                FILE* led = fopen("/dev/gpiochip2", "w");
+                FILE* led = fopen(LED_FILE, "w");
                 fputc('0', led);
                 fclose(led);
             }
-
         }
+        if( ev.type == EV_KEY && ev.code == 103)
+        {
+            if(ev.value == 0x1)
+            {
+                printf("Volume increased\n");
+                set_volume(10);
+            }
+        }
+        if( ev.type == EV_KEY && ev.code == 108)
+        {
+            if(ev.value == 0x1)
+            {
+                printf("Volume decreased\n");
+                set_volume(-10);
+            }
+        }
+
     }
 
     close(input_fd);
@@ -201,7 +249,7 @@ void reproduce_audio(){
     snd_pcm_hw_params_t* hw_params;
 
 
-    int ret = snd_pcm_open(&handle, "plughw:1", SND_PCM_STREAM_PLAYBACK, 0);
+    int ret = snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, 0);
 
     snd_pcm_hw_params_alloca(&hw_params);
     ret = snd_pcm_hw_params_any(handle, hw_params);
@@ -214,12 +262,12 @@ void reproduce_audio(){
     }
 
     snd_pcm_format_t format = SND_PCM_FORMAT_S32_LE;
-
     if ((ret = snd_pcm_hw_params_set_format(handle, hw_params, format)) < 0)
     {
         printf("ERROR! Cannot set format\n");
         return;
     }
+
 
     int channels = 2;
 
@@ -295,6 +343,7 @@ void * send_audio(){
                 return 0;
             }
         }
+        
         fclose(wav_file);
         printf("Audio sent successfully\n");
 
@@ -326,8 +375,13 @@ void *rcv_audio(void *arg) {
         ret = connect(socket_audio, (struct sockaddr *)&server, sizeof(server));
     }
     printf("Server audio listener connected\n");
-
+    FILE* blue_led = fopen(LED_FILE, "w");
     for(;;){
+            
+        fputc('2', blue_led);
+        fputc('5',blue_led);
+        fputc('5',blue_led);
+        fclose(blue_led);
         FILE *wav_file = fopen("audio_rcv.wav", "wb");
         ssize_t bytes_received;
         while ((bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0)) > 0) {

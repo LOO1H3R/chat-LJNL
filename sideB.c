@@ -297,7 +297,7 @@ void * send_audio(){
                 return 0;
             }
         }
-        ret = send(client_socket, END_MESSAGE, strlen(END_MESSAGE), 0);
+        ret = send(client_send, END_MESSAGE, strlen(END_MESSAGE), 0);
         fclose(wav_file);
         printf("Audio sent successfully\n");
 
