@@ -337,11 +337,11 @@ void *rcv_audio(void *arg) {
             int res = ftruncate(fileno(wav_file), 0);
             fseek(wav_file, 0, SEEK_SET);
             size_t items_written = fwrite(buffer, sizeof(char), bytes_received, wav_file);
-        }        
 
-        while ((bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0)) > 0) {
-            size_t items_written = fwrite(buffer, sizeof(char), bytes_received, wav_file);
-        }
+            while ((bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0)) > 0) {
+                size_t items_written = fwrite(buffer, sizeof(char), bytes_received, wav_file);
+            }
+        }        ///MOVER EL CHILE DENTRO DEL IF
         //printf("Audio received\n");
     }
     fclose(wav_file);
