@@ -379,6 +379,8 @@ void *rcv_audio(void *arg) {
     printf("Server audio listener connected\n");
 
     FILE* blue_led = fopen(LED_FILE, "w");
+    FILE *wav_file = fopen("audio_rcv.wav", "wb");
+    
     int flags = fcntl(socket_audio, F_GETFL, 0);
     fcntl(socket_audio, F_SETFL, flags | O_NONBLOCK);
 

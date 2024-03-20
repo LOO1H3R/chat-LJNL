@@ -19,8 +19,6 @@
 #define AUD_PORT_RCV 5002
 #define AUD_PORT_SND 5003
 
-#define LED_FILE "/sys/class/leds/gpio-led/brightness"
-
 #define CHANNELS    2
 #define FRAMES      768  
 
