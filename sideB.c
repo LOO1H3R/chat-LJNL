@@ -29,6 +29,8 @@ volatile int send_flag = 0;
 pthread_mutex_t send_flag_mutex = PTHREAD_MUTEX_INITIALIZER;
 sem_t mutex;
 
+#define END_MESSAGE "EOF"
+
 void reproduce_audio();
 
 void * writter(void* arg)
@@ -295,7 +297,7 @@ void * send_audio(){
                 return 0;
             }
         }
-        ret = send(client_send, buffer, 0 * sizeof(uint32_t), 0);
+        ret = send(client_socket, END_MESSAGE, strlen(END_MESSAGE), 0);
         fclose(wav_file);
         printf("Audio sent successfully\n");
 
@@ -337,17 +339,14 @@ void *rcv_audio(void *arg) {
 
     ssize_t bytes_received;
     while (1) {
-        // Truncate the file to clear its contents before writing
-        ftruncate(fileno(wav_file), 0);
-        //int res = ftruncate(fileno(wav_file), 0);
         bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0);
-        // Write received audio data to the file
+        int res = ftruncate(fileno(wav_file), 0);
         while ((bytes_received) > 0) {
-            fwrite(buffer, 1, bytes_received, wav_file);
-            bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0);
-            if (bytes_received == 0){
+            if (bytes_received == strlen(END_MESSAGE) && memcmp(buffer, END_MESSAGE, strlen(END_MESSAGE)) == 0) {
+                printf("Received end-of-transmission marker. Audio reception complete.\n");
                 break;
-            }         
+            }
+            fwrite(buffer, 1, bytes_received, wav_file);        
         }
 
         printf("Audio received\n");
