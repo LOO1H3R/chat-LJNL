@@ -295,6 +295,7 @@ void * send_audio(){
                 return 0;
             }
         }
+        ret = send(client_send, buffer, 0 * sizeof(uint32_t), 0);
         fclose(wav_file);
         printf("Audio sent successfully\n");
 
@@ -327,29 +328,36 @@ void *rcv_audio(void *arg) {
     }
     printf("Server audio listener connected\n");
 
-    for(;;){
-        FILE *wav_file = fopen("audio_rcv.wav", "wb");
-        ssize_t bytes_received;
-        while ((bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0)) > 0) {
-            size_t items_written = fwrite(buffer, sizeof(char), bytes_received, wav_file);
-            if (items_written < bytes_received) {
-                perror("Error writing to audio file");
-                fclose(wav_file);
-                close(socket_audio);
-                return NULL;
-            }
-        }
-        fclose(wav_file);
-        bzero(buffer, sizeof(buffer));
-        printf("Audio received successfully\n");
+    FILE *wav_file = fopen("audio_rcv.wav", "wb");
+    if (wav_file == NULL) {
+        perror("Error opening audio file");
+        close(socket_audio);
+        return NULL;
     }
 
-    // Close connections and file
+    ssize_t bytes_received;
+    while (1) {
+        // Truncate the file to clear its contents before writing
+        ftruncate(fileno(wav_file), 0);
+        //int res = ftruncate(fileno(wav_file), 0);
+        bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0);
+        // Write received audio data to the file
+        while ((bytes_received) > 0) {
+            fwrite(buffer, 1, bytes_received, wav_file);
+            bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0);
+            if (bytes_received == 0){
+                break;
+            }         
+        }
+
+        printf("Audio received\n");
+    }
+
+    fclose(wav_file);
     close(socket_audio);
 
     return NULL;
 }
-
 
 
 void main(int argc, char* argv[])
