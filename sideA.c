@@ -215,6 +215,8 @@ void * button_listener(void* arg){
                 // turn off LED
                 FILE* led = fopen(LED_FILE, "w");
                 fputc('0', led);
+                fputc('0', led);
+                fputc('0', led);
                 fclose(led);
             }
         }
@@ -375,30 +377,29 @@ void *rcv_audio(void *arg) {
         ret = connect(socket_audio, (struct sockaddr *)&server, sizeof(server));
     }
     printf("Server audio listener connected\n");
-    FILE* blue_led = fopen(LED_FILE, "w");
-    for(;;){
-            
-        fputc('2', blue_led);
-        fputc('5',blue_led);
-        fputc('5',blue_led);
-        fclose(blue_led);
-        FILE *wav_file = fopen("audio_rcv.wav", "wb");
-        ssize_t bytes_received;
-        while ((bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0)) > 0) {
-            size_t items_written = fwrite(buffer, sizeof(char), bytes_received, wav_file);
-            if (items_written < bytes_received) {
-                perror("Error writing to audio file");
-                fclose(wav_file);
-                close(socket_audio);
-                return NULL;
-            }
-        }
-        fclose(wav_file);
-        bzero(buffer, sizeof(buffer));
-        printf("Audio received successfully\n");
-    }
 
-    // Close connections and file
+    FILE* blue_led = fopen(LED_FILE, "w");
+    int flags = fcntl(socket_audio, F_GETFL, 0);
+    fcntl(socket_audio, F_SETFL, flags | O_NONBLOCK);
+
+    ssize_t bytes_received;
+    while (1) {
+        if ((bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0)) > 0)
+        {
+            int res = ftruncate(fileno(wav_file), 0);
+            fseek(wav_file, 0, SEEK_SET);
+            size_t items_written = fwrite(buffer, sizeof(char), bytes_received, wav_file);
+            fputc('2', blue_led);
+            fputc('5',blue_led);
+            fputc('5',blue_led);
+            fclose(blue_led);
+            while ((bytes_received = recv(socket_audio, buffer, sizeof(buffer), 0)) > 0) {
+                size_t items_written = fwrite(buffer, sizeof(char), bytes_received, wav_file);
+            }
+        }        ///MOVER EL CHILE DENTRO DEL IF
+        //printf("Audio received\n");
+    }
+    fclose(wav_file);
     close(socket_audio);
 
     return NULL;
